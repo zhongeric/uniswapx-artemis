@@ -1,5 +1,4 @@
 use super::types::{Config, OrderStatus, TokenInTokenOut};
-use std::error::Error;
 use crate::collectors::{
     block_collector::NewBlock,
     uniswapx_order_collector::{UniswapXOrder, CHAIN_ID},
@@ -10,9 +9,7 @@ use anyhow::Result;
 use artemis_core::executors::mempool_executor::{GasBidInfo, SubmitTxToMempool};
 use artemis_core::types::Strategy;
 use async_trait::async_trait;
-use bindings_uniswapx::{
-    shared_types::SignedOrder, swap_router_02_executor::SwapRouter02Executor,
-};
+use bindings_uniswapx::{shared_types::SignedOrder, swap_router_02_executor::SwapRouter02Executor};
 use ethers::{
     abi::{ethabi, AbiEncode, Token},
     providers::Middleware,
@@ -20,14 +17,13 @@ use ethers::{
     utils::hex,
 };
 use std::collections::HashMap;
+use std::error::Error;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{error, info};
-use uniswapx_rs::order::{
-    ExclusiveDutchOrder, OrderResolution
-};
+use uniswapx_rs::order::{ExclusiveDutchOrder, OrderResolution};
 
 use super::types::{Action, Event};
 
@@ -113,7 +109,8 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
             return None;
         }
 
-        let order = self.decode_order(&event.encoded_order)
+        let order = self
+            .decode_order(&event.encoded_order)
             .map_err(|e| error!("failed to decode: {}", e))
             .ok()?;
 
@@ -209,10 +206,7 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
             Token::Array(vec![Token::Address(H160::from_str(&request.token_in)?)]),
             Token::Bytes(Bytes::from_str(&route.method_parameters.calldata)?.encode()),
         ]);
-        let mut call = fill_contract.execute_batch(
-            signed_orders,
-            Bytes::from(calldata),
-        );
+        let mut call = fill_contract.execute_batch(signed_orders, Bytes::from(calldata));
         Ok(call.tx.set_chain_id(CHAIN_ID).clone())
     }
 
@@ -246,7 +240,9 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
                 });
             } else {
                 let order_batch_data = order_batches.get_mut(&token_in_token_out).unwrap();
-                order_batch_data.orders.push(OrderData::ExclusiveDutchOrderData(order_data.clone()));
+                order_batch_data
+                    .orders
+                    .push(OrderData::ExclusiveDutchOrderData(order_data.clone()));
                 order_batch_data.amount_in = order_batch_data.amount_in.wrapping_add(amount_in);
                 order_batch_data.amount_out_required = order_batch_data
                     .amount_out_required

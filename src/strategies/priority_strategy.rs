@@ -1,35 +1,35 @@
 use super::types::{Config, OrderStatus, TokenInTokenOut};
-use std::error::Error;
 use crate::collectors::{
-    block_collector::NewBlock, uniswapx_order_collector::{UniswapXOrder, CHAIN_ID}, uniswapx_route_collector::{OrderBatchData, OrderData, PriorityOrderData, RoutedOrder}
+    block_collector::NewBlock,
+    uniswapx_order_collector::{UniswapXOrder, CHAIN_ID},
+    uniswapx_route_collector::{OrderBatchData, OrderData, PriorityOrderData, RoutedOrder},
 };
-use anyhow::Result;
 use alloy_primitives::Uint;
+use anyhow::Result;
 use artemis_core::executors::mempool_executor::{GasBidInfo, SubmitTxToMempool};
 use artemis_core::types::Strategy;
 use async_trait::async_trait;
-use bindings_uniswapx::{
-    shared_types::SignedOrder, swap_router_02_executor::SwapRouter02Executor,
-};
+use bindings_uniswapx::{shared_types::SignedOrder, swap_router_02_executor::SwapRouter02Executor};
 use ethers::{
     abi::{ethabi, AbiEncode, Token},
     providers::Middleware,
-    types::{transaction::eip2718::TypedTransaction, Address, Bytes, Filter, H160, U256}, utils::hex,
+    types::{transaction::eip2718::TypedTransaction, Address, Bytes, Filter, H160, U256},
+    utils::hex,
 };
 use std::collections::HashMap;
+use std::error::Error;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{error, info};
-use uniswapx_rs::order::{
-    OrderResolution, PriorityOrder
-};
+use uniswapx_rs::order::{OrderResolution, PriorityOrder};
 
 use super::types::{Action, Event};
 
 const DONE_EXPIRY: u64 = 300;
 const REACTOR_ADDRESS: &str = "";
+const EXECUTOR_ADDRESS: &str = "";
 pub const WETH_ADDRESS: &str = "";
 
 #[derive(Debug)]
@@ -71,7 +71,6 @@ impl<M: Middleware + 'static> UniswapXPriorityFill<M> {
     }
 }
 
-
 #[async_trait]
 impl<M: Middleware + 'static> Strategy<Event, Action> for UniswapXPriorityFill<M> {
     // In order to sync this strategy, we need to get the current bid for all Sudo pools.
@@ -108,7 +107,8 @@ impl<M: Middleware + 'static> UniswapXPriorityFill<M> {
             return None;
         }
 
-        let order = self.decode_order(&event.encoded_order)
+        let order = self
+            .decode_order(&event.encoded_order)
             .map_err(|e| error!("failed to decode: {}", e))
             .ok()?;
 
@@ -156,31 +156,30 @@ impl<M: Middleware + 'static> UniswapXPriorityFill<M> {
 
     /// Process new block events, updating the internal state.
     async fn process_new_block_event(&mut self, event: NewBlock) -> Option<Action> {
-            self.last_block_number = event.number.as_u64();
-            self.last_block_timestamp = event.timestamp.as_u64();
-    
-            info!(
-                "Processing block {} at {}, Order set sizes -- open: {}, done: {}",
-                event.number,
-                event.timestamp,
-                self.open_orders.len(),
-                self.done_orders.len()
-            );
-            self.handle_fills()
-                .await
-                .map_err(|e| error!("Error handling fills {}", e))
-                .ok()?;
-            self.update_open_orders();
-            self.prune_done_orders();
-    
-            self.batch_sender
-                .send(self.get_order_batches().values().cloned().collect())
-                .await
-                .ok()?;
-    
-            None
-        }
-    
+        self.last_block_number = event.number.as_u64();
+        self.last_block_timestamp = event.timestamp.as_u64();
+
+        info!(
+            "Processing block {} at {}, Order set sizes -- open: {}, done: {}",
+            event.number,
+            event.timestamp,
+            self.open_orders.len(),
+            self.done_orders.len()
+        );
+        self.handle_fills()
+            .await
+            .map_err(|e| error!("Error handling fills {}", e))
+            .ok()?;
+        self.update_open_orders();
+        self.prune_done_orders();
+
+        self.batch_sender
+            .send(self.get_order_batches().values().cloned().collect())
+            .await
+            .ok()?;
+
+        None
+    }
 
     // builds a transaction to fill an order
     fn build_fill(&self, RoutedOrder { request, route }: RoutedOrder) -> Result<TypedTransaction> {
@@ -205,10 +204,7 @@ impl<M: Middleware + 'static> UniswapXPriorityFill<M> {
             Token::Array(vec![Token::Address(H160::from_str(&request.token_in)?)]),
             Token::Bytes(Bytes::from_str(&route.method_parameters.calldata)?.encode()),
         ]);
-        let mut call = fill_contract.execute_batch(
-            signed_orders,
-            Bytes::from(calldata),
-        );
+        let mut call = fill_contract.execute_batch(signed_orders, Bytes::from(calldata));
         Ok(call.tx.set_chain_id(CHAIN_ID).clone())
     }
 
@@ -242,7 +238,9 @@ impl<M: Middleware + 'static> UniswapXPriorityFill<M> {
                 });
             } else {
                 let order_batch_data = order_batches.get_mut(&token_in_token_out).unwrap();
-                order_batch_data.orders.push(OrderData::PriorityOrderData(order_data.clone()));
+                order_batch_data
+                    .orders
+                    .push(OrderData::PriorityOrderData(order_data.clone()));
                 order_batch_data.amount_in = order_batch_data.amount_in.wrapping_add(amount_in);
                 order_batch_data.amount_out_required = order_batch_data
                     .amount_out_required
@@ -251,7 +249,6 @@ impl<M: Middleware + 'static> UniswapXPriorityFill<M> {
         });
         order_batches
     }
-
 
     async fn handle_fills(&mut self) -> Result<()> {
         let reactor_address = REACTOR_ADDRESS.parse::<Address>().unwrap();
@@ -298,12 +295,7 @@ impl<M: Middleware + 'static> UniswapXPriorityFill<M> {
             .checked_div(U256::from_str_radix(&route.gas_use_estimate_quote, 10).ok()?)
     }
 
-    fn update_order_state(
-        &mut self,
-        order: PriorityOrder,
-        signature: String,
-        order_hash: String,
-    ) {
+    fn update_order_state(&mut self, order: PriorityOrder, signature: String, order_hash: String) {
         let resolved = order.resolve(Uint::from(0));
         let order_status: OrderStatus = match resolved {
             OrderResolution::Expired => OrderStatus::Done,
