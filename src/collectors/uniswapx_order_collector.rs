@@ -11,6 +11,35 @@ static UNISWAPX_API_URL: &str = "https://api.uniswap.org/v2";
 static POLL_INTERVAL_SECS: u64 = 5;
 pub const CHAIN_ID: u64 = 1;
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum OrderType {
+    Dutch,
+    Priority,
+}
+
+impl OrderType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OrderType::Dutch => "Dutch_V1",
+            OrderType::Priority => "Priority",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<OrderType> {
+        match s {
+            "Dutch_V1" => Some(OrderType::Dutch),
+            "Priority" => Some(OrderType::Priority),
+            _ => None,
+        }
+    }
+}
+
+impl Default for OrderType {
+    fn default() -> Self {
+        OrderType::Dutch
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct UniswapXOrder {
     #[serde(rename = "encodedOrder")]
@@ -38,13 +67,20 @@ pub struct UniswapXOrderResponse {
 pub struct UniswapXOrderCollector {
     pub client: Client,
     pub base_url: String,
+    pub chain_id: u64,
+    pub order_type: OrderType,
 }
 
 impl UniswapXOrderCollector {
-    pub fn new() -> Self {
+    pub fn new(
+        chain_id: u64,
+        order_type: OrderType,
+    ) -> Self {
         Self {
             client: Client::new(),
             base_url: UNISWAPX_API_URL.to_string(),
+            chain_id,
+            order_type,
         }
     }
 }
@@ -56,8 +92,8 @@ impl UniswapXOrderCollector {
 impl Collector<UniswapXOrder> for UniswapXOrderCollector {
     async fn get_event_stream(&self) -> Result<CollectorStream<'_, UniswapXOrder>> {
         let url = format!(
-            "{}/orders?orderStatus=open&chainId={}",
-            self.base_url, CHAIN_ID
+            "{}/orders?orderStatus=open&chainId={}&orderType={}",
+            self.base_url, self.chain_id, self.order_type.as_str()
         );
 
         // stream that polls the UniswapX API every 5 seconds
@@ -112,6 +148,8 @@ mod tests {
         let res = UniswapXOrderCollector {
             client: reqwest::Client::new(),
             base_url: url.clone(),
+            chain_id: 1,
+            order_type: super::OrderType::Dutch
         };
 
         (res, server, mock)

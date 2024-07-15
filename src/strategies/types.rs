@@ -10,6 +10,7 @@ use uniswapx_rs::order::ResolvedOrder;
 pub enum Event {
     NewBlock(NewBlock),
     UniswapXOrder(Box<UniswapXOrder>),
+    PriorityOrder(Box<UniswapXOrder>),
     UniswapXRoute(Box<RoutedOrder>),
 }
 
