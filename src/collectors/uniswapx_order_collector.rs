@@ -72,10 +72,7 @@ pub struct UniswapXOrderCollector {
 }
 
 impl UniswapXOrderCollector {
-    pub fn new(
-        chain_id: u64,
-        order_type: OrderType,
-    ) -> Self {
+    pub fn new(chain_id: u64, order_type: OrderType) -> Self {
         Self {
             client: Client::new(),
             base_url: UNISWAPX_API_URL.to_string(),
@@ -93,7 +90,9 @@ impl Collector<UniswapXOrder> for UniswapXOrderCollector {
     async fn get_event_stream(&self) -> Result<CollectorStream<'_, UniswapXOrder>> {
         let url = format!(
             "{}/orders?orderStatus=open&chainId={}&orderType={}",
-            self.base_url, self.chain_id, self.order_type.as_str()
+            self.base_url,
+            self.chain_id,
+            self.order_type.as_str()
         );
 
         // stream that polls the UniswapX API every 5 seconds
@@ -149,7 +148,7 @@ mod tests {
             client: reqwest::Client::new(),
             base_url: url.clone(),
             chain_id: 1,
-            order_type: super::OrderType::Dutch
+            order_type: super::OrderType::Dutch,
         };
 
         (res, server, mock)

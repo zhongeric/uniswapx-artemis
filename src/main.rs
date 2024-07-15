@@ -92,16 +92,12 @@ async fn main() -> Result<()> {
     let (batch_sender, batch_receiver) = channel(512);
     let (route_sender, route_receiver) = channel(512);
 
-    let uniswapx_collector = Box::new(UniswapXOrderCollector::new(
-        1, OrderType::Dutch
-    ));
+    let uniswapx_collector = Box::new(UniswapXOrderCollector::new(1, OrderType::Dutch));
     let uniswapx_collector =
         CollectorMap::new(uniswapx_collector, |e| Event::UniswapXOrder(Box::new(e)));
     engine.add_collector(Box::new(uniswapx_collector));
 
-    let priority_collector = Box::new(UniswapXOrderCollector::new(
-        1, OrderType::Priority
-    ));
+    let priority_collector = Box::new(UniswapXOrderCollector::new(1, OrderType::Priority));
     let priority_collector =
         CollectorMap::new(priority_collector, |e| Event::PriorityOrder(Box::new(e)));
     engine.add_collector(Box::new(priority_collector));
