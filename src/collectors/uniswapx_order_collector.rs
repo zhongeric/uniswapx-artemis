@@ -20,14 +20,14 @@ pub enum OrderType {
 impl OrderType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            OrderType::Dutch => "Dutch_V1",
+            OrderType::Dutch => "Dutch",
             OrderType::Priority => "Priority",
         }
     }
 
     pub fn from_str(s: &str) -> Option<OrderType> {
         match s {
-            "Dutch_V1" => Some(OrderType::Dutch),
+            "Dutch" => Some(OrderType::Dutch),
             "Priority" => Some(OrderType::Priority),
             _ => None,
         }
