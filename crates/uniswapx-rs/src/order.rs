@@ -1,7 +1,8 @@
 use std::error::Error;
 
+use alloy_dyn_abi::SolType;
 use alloy_primitives::Uint;
-use alloy_sol_types::{sol, SolType};
+use alloy_sol_types::sol;
 use anyhow::Result;
 
 sol! {
@@ -74,26 +75,26 @@ sol! {
     }
 }
 
-pub trait Order: Sized {
-    fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>>;
-    fn _encode(&self) -> Vec<u8>;
+
+pub enum Order {
+    ExclusiveDutchOrder(ExclusiveDutchOrder),
+    PriorityOrder(PriorityOrder),
 }
 
-// Generic function to decode orders
-pub fn decode_order<T: Order>(encoded_order: &str) -> Result<T, Box<dyn Error>> {
-    let encoded_order = if encoded_order.starts_with("0x") {
-        &encoded_order[2..]
-    } else {
-        encoded_order
-    };
-    let order_hex = hex::decode(encoded_order)?;
+impl Order {
+    pub fn resolve(&self, timestamp: u64, priority_fee: Uint<256, 4>) -> OrderResolution {
+        match self {
+            Order::ExclusiveDutchOrder(order) => order.resolve(timestamp),
+            Order::PriorityOrder(order) => order.resolve(priority_fee),
+        }
+    }
 
-    T::_decode(&order_hex, false)
-}
-
-// Generic function to encode orders
-pub fn encode_order<T: Order>(order: &T) -> Vec<u8> {
-    order._encode()
+    pub fn encode(&self) -> Vec<u8> {
+        match self {
+            Order::ExclusiveDutchOrder(order) => order._encode(),
+            Order::PriorityOrder(order) => order._encode(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -122,17 +123,15 @@ pub enum OrderResolution {
     Invalid,
 }
 
-impl Order for ExclusiveDutchOrder {
-    fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>> {
+impl ExclusiveDutchOrder {
+    pub fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>> {
         Ok(ExclusiveDutchOrder::decode(order_hex, validate)?)
     }
 
-    fn _encode(&self) -> Vec<u8> {
+    pub fn _encode(&self) -> Vec<u8> {
         ExclusiveDutchOrder::encode(self)
     }
-}
 
-impl ExclusiveDutchOrder {
     pub fn resolve(&self, timestamp: u64) -> OrderResolution {
         let timestamp = Uint::from(timestamp);
 
@@ -184,17 +183,15 @@ impl ExclusiveDutchOrder {
     }
 }
 
-impl Order for PriorityOrder {
-    fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>> {
+impl PriorityOrder {
+    pub fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>> {
         Ok(PriorityOrder::decode(order_hex, validate)?)
     }
 
-    fn _encode(&self) -> Vec<u8> {
+    pub fn _encode(&self) -> Vec<u8> {
         PriorityOrder::encode(self)
     }
-}
 
-impl PriorityOrder {
     pub fn resolve(&self, priority_fee: Uint<256, 4>) -> OrderResolution {
         let input = self.input.scale(priority_fee);
         let outputs = self
