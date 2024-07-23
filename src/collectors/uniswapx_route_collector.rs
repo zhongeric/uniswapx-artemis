@@ -5,7 +5,7 @@ use reqwest::header::ORIGIN;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::info;
-use uniswapx_rs::order::{V2DutchOrder, PriorityOrder, ResolvedOrder};
+use uniswapx_rs::order::{PriorityOrder, ResolvedOrder, V2DutchOrder};
 
 use crate::strategies::uniswapx_strategy::EXECUTOR_ADDRESS;
 use artemis_core::types::{Collector, CollectorStream};

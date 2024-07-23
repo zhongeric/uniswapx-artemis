@@ -2,7 +2,7 @@ use super::types::{Config, OrderStatus, TokenInTokenOut};
 use crate::collectors::{
     block_collector::NewBlock,
     uniswapx_order_collector::{UniswapXOrder, CHAIN_ID},
-    uniswapx_route_collector::{V2DutchOrderData, OrderBatchData, OrderData, RoutedOrder},
+    uniswapx_route_collector::{OrderBatchData, OrderData, RoutedOrder, V2DutchOrderData},
 };
 use alloy_primitives::Uint;
 use anyhow::Result;
@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{error, info};
-use uniswapx_rs::order::{V2DutchOrder, OrderResolution};
+use uniswapx_rs::order::{OrderResolution, V2DutchOrder};
 
 use super::types::{Action, Event};
 
@@ -94,12 +94,13 @@ impl<M: Middleware + 'static> Strategy<Event, Action> for UniswapXUniswapFill<M>
 
 impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
     fn decode_order(&self, encoded_order: &str) -> Result<V2DutchOrder, Box<dyn Error>> {
+        info!("Decoding order: {}", encoded_order);
         let encoded_order = if encoded_order.starts_with("0x") {
             &encoded_order[2..]
         } else {
             encoded_order
         };
-        let order_hex = hex::decode(encoded_order)?;
+        let order_hex: Vec<u8> = hex::decode(encoded_order)?;
 
         Ok(V2DutchOrder::_decode(&order_hex, false)?)
     }
@@ -312,12 +313,7 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
         }
     }
 
-    fn update_order_state(
-        &mut self,
-        order: V2DutchOrder,
-        signature: String,
-        order_hash: String,
-    ) {
+    fn update_order_state(&mut self, order: V2DutchOrder, signature: String, order_hash: String) {
         let resolved = order.resolve(self.last_block_timestamp + BLOCK_TIME);
         let order_status: OrderStatus = match resolved {
             OrderResolution::Expired => OrderStatus::Done,

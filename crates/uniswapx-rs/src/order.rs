@@ -134,11 +134,11 @@ pub enum OrderResolution {
 
 impl V2DutchOrder {
     pub fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>> {
-        Ok(V2DutchOrder::decode(order_hex, validate)?)
+        Ok(V2DutchOrder::decode_single(order_hex, validate)?)
     }
 
     pub fn _encode(&self) -> Vec<u8> {
-        V2DutchOrder::encode(self)
+        V2DutchOrder::encode_single(self)
     }
 
     pub fn resolve(&self, timestamp: u64) -> OrderResolution {
@@ -195,11 +195,11 @@ impl V2DutchOrder {
 
 impl PriorityOrder {
     pub fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>> {
-        Ok(PriorityOrder::decode(order_hex, validate)?)
+        Ok(PriorityOrder::decode_single(order_hex, validate)?)
     }
 
     pub fn _encode(&self) -> Vec<u8> {
-        PriorityOrder::encode(self)
+        PriorityOrder::encode_single(self)
     }
 
     pub fn resolve(&self, priority_fee: Uint<256, 4>) -> OrderResolution {
