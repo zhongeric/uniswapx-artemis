@@ -32,14 +32,23 @@ sol! {
     }
 
     #[derive(Debug)]
-    struct ExclusiveDutchOrder {
-        OrderInfo info;
+    struct CosignerData {
         uint256 decayStartTime;
         uint256 decayEndTime;
         address exclusiveFiller;
         uint256 exclusivityOverrideBps;
-        DutchInput input;
-        DutchOutput[] outputs;
+        uint256 inputAmount;
+        uint256[] outputAmounts;
+    }
+
+    #[derive(Debug)]
+    struct V2DutchOrder {
+        OrderInfo info;
+        address cosigner;
+        DutchInput baseInput;
+        DutchOutput[] baseOutputs;
+        CosignerData cosignerData;
+        bytes cosignature;
     }
     
     #[derive(Debug)]
@@ -77,21 +86,21 @@ sol! {
 
 
 pub enum Order {
-    ExclusiveDutchOrder(ExclusiveDutchOrder),
+    V2DutchOrder(V2DutchOrder),
     PriorityOrder(PriorityOrder),
 }
 
 impl Order {
     pub fn resolve(&self, timestamp: u64, priority_fee: Uint<256, 4>) -> OrderResolution {
         match self {
-            Order::ExclusiveDutchOrder(order) => order.resolve(timestamp),
+            Order::V2DutchOrder(order) => order.resolve(timestamp),
             Order::PriorityOrder(order) => order.resolve(priority_fee),
         }
     }
 
     pub fn encode(&self) -> Vec<u8> {
         match self {
-            Order::ExclusiveDutchOrder(order) => order._encode(),
+            Order::V2DutchOrder(order) => order._encode(),
             Order::PriorityOrder(order) => order._encode(),
         }
     }
@@ -123,13 +132,13 @@ pub enum OrderResolution {
     Invalid,
 }
 
-impl ExclusiveDutchOrder {
+impl V2DutchOrder {
     pub fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>> {
-        Ok(ExclusiveDutchOrder::decode(order_hex, validate)?)
+        Ok(V2DutchOrder::decode_single(order_hex, validate)?)
     }
 
     pub fn _encode(&self) -> Vec<u8> {
-        ExclusiveDutchOrder::encode(self)
+        V2DutchOrder::encode_single(self)
     }
 
     pub fn resolve(&self, timestamp: u64) -> OrderResolution {
@@ -140,33 +149,34 @@ impl ExclusiveDutchOrder {
         };
 
         // resolve over the decay curve
+        // TODO: apply cosigner logic
 
-        let input = ResolvedInput {
-            token: self.input.token.to_string(),
+        let input: ResolvedInput = ResolvedInput {
+            token: self.baseInput.token.to_string(),
             amount: resolve_decay(
                 timestamp,
-                self.decayStartTime,
-                self.decayEndTime,
-                self.input.startAmount,
-                self.input.endAmount,
+                self.cosignerData.decayStartTime,
+                self.cosignerData.decayEndTime,
+                self.baseInput.startAmount,
+                self.baseInput.endAmount,
             ),
         };
 
         let outputs = self
-            .outputs
+            .baseOutputs
             .iter()
             .map(|output| {
                 let mut amount = resolve_decay(
                     timestamp,
-                    self.decayStartTime,
-                    self.decayEndTime,
+                    self.cosignerData.decayStartTime,
+                    self.cosignerData.decayEndTime,
                     output.startAmount,
                     output.endAmount,
                 );
 
                 // add exclusivity override to amount
-                if self.decayStartTime.gt(&timestamp) && !self.exclusiveFiller.is_zero() {
-                    let exclusivity = self.exclusivityOverrideBps.wrapping_add(Uint::from(10000));
+                if self.cosignerData.decayStartTime.gt(&timestamp) && !self.cosignerData.exclusiveFiller.is_zero() {
+                    let exclusivity = self.cosignerData.exclusivityOverrideBps.wrapping_add(Uint::from(10000));
                     let exclusivity = exclusivity.wrapping_mul(amount);
                     amount = exclusivity.wrapping_div(Uint::from(10000));
                 };
@@ -185,11 +195,11 @@ impl ExclusiveDutchOrder {
 
 impl PriorityOrder {
     pub fn _decode(order_hex: &[u8], validate: bool) -> Result<Self, Box<dyn Error>> {
-        Ok(PriorityOrder::decode(order_hex, validate)?)
+        Ok(PriorityOrder::decode_single(order_hex, validate)?)
     }
 
     pub fn _encode(&self) -> Vec<u8> {
-        PriorityOrder::encode(self)
+        PriorityOrder::encode_single(self)
     }
 
     pub fn resolve(&self, priority_fee: Uint<256, 4>) -> OrderResolution {

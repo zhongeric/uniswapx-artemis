@@ -2,7 +2,7 @@ use super::types::{Config, OrderStatus, TokenInTokenOut};
 use crate::collectors::{
     block_collector::NewBlock,
     uniswapx_order_collector::{UniswapXOrder, CHAIN_ID},
-    uniswapx_route_collector::{ExclusiveDutchOrderData, OrderBatchData, OrderData, RoutedOrder},
+    uniswapx_route_collector::{OrderBatchData, OrderData, RoutedOrder, V2DutchOrderData},
 };
 use alloy_primitives::Uint;
 use anyhow::Result;
@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{error, info};
-use uniswapx_rs::order::{ExclusiveDutchOrder, OrderResolution};
+use uniswapx_rs::order::{OrderResolution, V2DutchOrder};
 
 use super::types::{Action, Event};
 
@@ -43,7 +43,7 @@ pub struct UniswapXUniswapFill<M> {
     last_block_number: u64,
     last_block_timestamp: u64,
     // map of open order hashes to order data
-    open_orders: HashMap<String, ExclusiveDutchOrderData>,
+    open_orders: HashMap<String, V2DutchOrderData>,
     // map of done order hashes to time at which we can safely prune them
     done_orders: HashMap<String, u64>,
     batch_sender: Sender<Vec<OrderBatchData>>,
@@ -93,15 +93,16 @@ impl<M: Middleware + 'static> Strategy<Event, Action> for UniswapXUniswapFill<M>
 }
 
 impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
-    fn decode_order(&self, encoded_order: &str) -> Result<ExclusiveDutchOrder, Box<dyn Error>> {
+    fn decode_order(&self, encoded_order: &str) -> Result<V2DutchOrder, Box<dyn Error>> {
+        info!("Decoding order: {}", encoded_order);
         let encoded_order = if encoded_order.starts_with("0x") {
             &encoded_order[2..]
         } else {
             encoded_order
         };
-        let order_hex = hex::decode(encoded_order)?;
+        let order_hex: Vec<u8> = hex::decode(encoded_order)?;
 
-        Ok(ExclusiveDutchOrder::_decode(&order_hex, false)?)
+        Ok(V2DutchOrder::_decode(&order_hex, false)?)
     }
 
     // Process new orders as they come in.
@@ -191,7 +192,7 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
         let mut signed_orders: Vec<SignedOrder> = Vec::new();
         for batch in request.orders.iter() {
             match batch {
-                OrderData::ExclusiveDutchOrderData(order) => {
+                OrderData::V2DutchOrderData(order) => {
                     signed_orders.push(SignedOrder {
                         order: Bytes::from(order.order._encode()),
                         sig: Bytes::from_str(&order.signature)?,
@@ -233,7 +234,7 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
                 order_batches.entry(token_in_token_out.clone())
             {
                 e.insert(OrderBatchData {
-                    orders: vec![OrderData::ExclusiveDutchOrderData(order_data.clone())],
+                    orders: vec![OrderData::V2DutchOrderData(order_data.clone())],
                     amount_in,
                     amount_out_required: amount_out,
                     token_in: order_data.resolved.input.token.clone(),
@@ -243,7 +244,7 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
                 let order_batch_data = order_batches.get_mut(&token_in_token_out).unwrap();
                 order_batch_data
                     .orders
-                    .push(OrderData::ExclusiveDutchOrderData(order_data.clone()));
+                    .push(OrderData::V2DutchOrderData(order_data.clone()));
                 order_batch_data.amount_in = order_batch_data.amount_in.wrapping_add(amount_in);
                 order_batch_data.amount_out_required = order_batch_data
                     .amount_out_required
@@ -292,7 +293,7 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
     fn update_open_orders(&mut self) {
         // TODO: this is nasty, plz cleanup
         let binding = self.open_orders.clone();
-        let order_hashes: Vec<(&String, &ExclusiveDutchOrderData)> = binding.iter().collect();
+        let order_hashes: Vec<(&String, &V2DutchOrderData)> = binding.iter().collect();
         for (order_hash, order_data) in order_hashes {
             self.update_order_state(
                 order_data.order.clone(),
@@ -312,12 +313,7 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
         }
     }
 
-    fn update_order_state(
-        &mut self,
-        order: ExclusiveDutchOrder,
-        signature: String,
-        order_hash: String,
-    ) {
+    fn update_order_state(&mut self, order: V2DutchOrder, signature: String, order_hash: String) {
         let resolved = order.resolve(self.last_block_timestamp + BLOCK_TIME);
         let order_status: OrderStatus = match resolved {
             OrderResolution::Expired => OrderStatus::Done,
@@ -339,7 +335,7 @@ impl<M: Middleware + 'static> UniswapXUniswapFill<M> {
                 }
                 self.open_orders.insert(
                     order_hash.clone(),
-                    ExclusiveDutchOrderData {
+                    V2DutchOrderData {
                         order,
                         hash: order_hash,
                         signature,
